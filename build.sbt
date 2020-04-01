@@ -16,7 +16,7 @@ lazy val core = project.in(file("core"))
   )
 
 lazy val docs = project.in(file("docs"))
-  .enablePlugins(GhpagesPlugin, MdocPlugin, ParadoxMaterialThemePlugin, ParadoxSitePlugin)
+  .enablePlugins(GhpagesPlugin, MdocPlugin, ParadoxSitePlugin)
   .dependsOn(core)
   .settings(commonSettings, skipOnPublishSettings, docsSettings)
 
@@ -221,7 +221,6 @@ lazy val mimaSettings = {
 lazy val generateNetlifyToml = taskKey[Unit]("Generate netlify.toml")
 
 lazy val docsSettings = {
-  ParadoxMaterialThemePlugin.paradoxMaterialThemeSettings(Paradox) ++
   Seq(
     crossScalaVersions := List(scalaVersion.value),
     mdocIn := (baseDirectory.value) / "src" / "main" / "mdoc", // 
@@ -264,10 +263,7 @@ lazy val docsSettings = {
 
     sourceDirectory in Paradox := mdocOut.value,
     makeSite := makeSite.dependsOn(mdoc.toTask("")).dependsOn(generateNetlifyToml).value,
-    Paradox / paradoxMaterialTheme ~= {
-      _.withRepository(uri("https://github.com/http4s/http4s-jdk-http-client"))
-       .withLogoUri(uri("https://http4s.org/images/http4s-logo.svg"))
-    },
+    paradoxTheme := Some(builtinParadoxTheme("generic")),
     siteSubdirName in Paradox := {
       if (isSnapshot.value) "latest"
       else version.value

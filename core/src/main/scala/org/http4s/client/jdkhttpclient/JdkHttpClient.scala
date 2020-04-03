@@ -4,21 +4,18 @@ import java.net.URI
 import java.net.http.HttpRequest.BodyPublishers
 import java.net.http.HttpResponse.BodyHandlers
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
-import java.nio.ByteBuffer
-import java.util
-import java.util.concurrent.Flow
 
 import cats.ApplicativeError
 import cats.effect._
 import cats.implicits._
+import fs2.Stream
 import fs2.concurrent.SignallingRef
 import fs2.interop.reactivestreams._
-import fs2.{Chunk, Stream}
+import org.http4s._
 import org.http4s.client.Client
 import org.http4s.client.jdkhttpclient.compat.CollectionConverters._
 import org.http4s.internal.fromCompletionStage
 import org.http4s.util.CaseInsensitiveString
-import org.http4s.{Header, Headers, HttpVersion, Request, Response, Status}
 import org.reactivestreams.FlowAdapters
 
 object JdkHttpClient {
@@ -61,7 +58,8 @@ object JdkHttpClient {
       }
 
     def convertResponse(
-        res: HttpResponse[Flow.Publisher[util.List[ByteBuffer]]]
+//        res: HttpResponse[Flow.Publisher[util.List[ByteBuffer]]]
+        res: HttpResponse[Array[Byte]]
     ): Resource[F, Response[F]] =
       Resource(
         (F.fromEither(Status.fromInt(res.statusCode)), SignallingRef[F, Boolean](false)).mapN {
@@ -75,12 +73,13 @@ object JdkHttpClient {
                 case HttpClient.Version.HTTP_1_1 => HttpVersion.`HTTP/1.1`
                 case HttpClient.Version.HTTP_2 => HttpVersion.`HTTP/2.0`
               },
-              body = FlowAdapters
-                .toPublisher(res.body)
-                .toStream[F]
-                .interruptWhen(signal)
-                .flatMap(bs => Stream.fromIterator(bs.iterator.asScala.map(Chunk.byteBuffer)))
-                .flatMap(Stream.chunk)
+//              body = FlowAdapters
+//                .toPublisher(res.body)
+//                .toStream[F]
+//                .interruptWhen(signal)
+//                .flatMap(bs => Stream.fromIterator(bs.iterator.asScala.map(Chunk.byteBuffer)))
+//                .flatMap(Stream.chunk)
+              body = Stream.chunk(fs2.Chunk.bytes(res.body)).covary[F]
             ) -> signal.set(true)
         }
       )
@@ -89,7 +88,7 @@ object JdkHttpClient {
       for {
         req <- Resource.liftF(convertRequest(req))
         res <- Resource.liftF(
-          fromCompletionStage(F.delay(jdkHttpClient.sendAsync(req, BodyHandlers.ofPublisher)))
+          fromCompletionStage(F.delay(jdkHttpClient.sendAsync(req, BodyHandlers.ofByteArray())))
         )
         res <- convertResponse(res)
       } yield res

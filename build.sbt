@@ -14,6 +14,7 @@ lazy val core = project.in(file("core"))
   .settings(
     name := "http4s-jdk-http-client"
   )
+  .enablePlugins(JavaAppPackaging)
 
 lazy val docs = project.in(file("docs"))
   .enablePlugins(GhpagesPlugin, MdocPlugin, ParadoxMaterialThemePlugin, ParadoxSitePlugin)

@@ -24,7 +24,7 @@ let steps =
                 c.Run::{
                 , name = "Test docs"
                 , run = "docs/makeSite"
-                , if = Some "startsWith(matrix.scala, '2.12')"
+                , `if` = Some "startsWith(matrix.scala, '2.12')"
                 }
             ]
 

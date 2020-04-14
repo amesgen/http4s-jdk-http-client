@@ -6,9 +6,10 @@ jobs:
     - uses: actions/setup-java@v1
       with:
         java-version: '11'
-    - name: Check generated YAML files
-      run: \nbash -c 'sbt convertDhall'\n\n[[ $(git status --porcelain | wc -l) -eq
-        0 ]]\n
+    - name: Generate YAML files
+      run: sbt convertDhall
+    - name: Check for differences
+      run: '[[ $(git status --porcelain | wc -l) -eq 0 ]]'
 name: Check Dhall configs
 'on':
 - push

@@ -4,15 +4,11 @@ let steps =
       [ c.steps.checkout
       , c.steps.java c.javaVersions.default
       , c.BuildStep.Run
+          c.Run::{ name = "Generate YAML files", run = "sbt convertDhall" }
+      , c.BuildStep.Run
           c.Run::{
-          , name = "Check generated YAML files"
-          , run =
-              ''
-
-              bash -c 'sbt convertDhall'
-
-              [[ $(git status --porcelain | wc -l) -eq 0 ]]
-              ''
+          , name = "Check for differences"
+          , run = "[[ \$(git status --porcelain | wc -l) -eq 0 ]]"
           }
       ]
 

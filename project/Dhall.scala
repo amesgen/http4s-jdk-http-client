@@ -7,6 +7,7 @@ import org.dhallj.parser.DhallParser
 import org.dhallj.yaml.YamlConverter
 import org.http4s.client.Client
 import org.http4s.client.jdkhttpclient.JdkHttpClient
+import org.yaml.snakeyaml.DumperOptions
 import sbt.{IO => _, _}
 import scala.concurrent.ExecutionContext
 import upickle.default.{ReadWriter, macroRW}
@@ -34,7 +35,12 @@ object Dhall {
     val baseDir = (Keys.baseDirectory in LocalRootProject).value.absolutePath
     def convertYaml(from: String, to: String): Unit = {
       val dhall = loadDhall(s"$baseDir/dhall/$from.dhall")
-      val yaml = YamlConverter.toYamlString(dhall)
+      val yaml = YamlConverter.toYamlString(dhall, {
+        val opts = new DumperOptions
+        opts.setSplitLines(false)
+        opts.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK)
+        opts
+      }, true)
       Files.writeString(Paths.get(s"$baseDir/$to"), yaml)
     }
     List("ci", "release", "dhall").foreach { file =>

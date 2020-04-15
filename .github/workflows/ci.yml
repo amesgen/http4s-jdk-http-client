@@ -10,8 +10,7 @@ jobs:
       with:
         java-version: ${{ matrix.java }}
     - name: Get current week
-      run: echo \"::set-env name=current_week::$(( 10#$(date +%U) ))\"\necho \"::set-env
-        name=last_week::$(( 10#$(date +%U) - 1 ))\"\n
+      run: echo \"::set-env name=current_week::$(( 10#$(date +%U) ))\"\necho \"::set-env name=last_week::$(( 10#$(date +%U) - 1 ))\"\n
     - name: Cache SBT coursier cache
       uses: actions/cache@v1
       with:

@@ -13,11 +13,11 @@ the [`java.net.http.HttpClient`][Java HttpClient] introduced in Java
 To use http4s-jdk-http-client in an existing SBT project, add the
 following dependency to your `build.sbt`:
 
-```scala
-libraryDependencies ++= Seq(
-  "org.http4s" %% "http4s-jdk-http-client" % "@VERSION@"
-)
-```
+@@dependency[sbt,Maven,Gradle] {
+  group="org.http4s"
+  artifact="http4s-jdk-http-client"
+  version="@VERSION@"
+}
 
 ### Compatibility
 
@@ -155,14 +155,14 @@ If you do not need an HTTP client, you can also call `JdkWSClient.simple[IO]` as
 
 We have the following websocket frame hierarchy:
 
- - `WSFrame`
-   - `WSControlFrame`
-     - `WSFrame.Close`
-     - `WSFrame.Ping`
-     - `WSFrame.Pong`
-   - `WSDataFrame`
-     - `WSFrame.Text`
-     - `WSFrame.Binary`
+ * `WSFrame`
+     * `WSControlFrame`
+         * `WSFrame.Close`
+         * `WSFrame.Ping`
+         * `WSFrame.Pong`
+     * `WSDataFrame`
+         * `WSFrame.Text`
+         * `WSFrame.Binary`
 
 There are two connection modes: "low-level" and "high-level". Both manage the lifetime of a
 websocket connection via a [`Resource`][Resource].

@@ -17,7 +17,7 @@ lazy val core = project
 
 lazy val docs = project
   .in(file("docs"))
-  .enablePlugins(GhpagesPlugin, MdocPlugin, ParadoxMaterialThemePlugin, ParadoxSitePlugin)
+  .enablePlugins(GhpagesPlugin, MdocPlugin, ParadoxSitePlugin)
   .dependsOn(core)
   .settings(commonSettings, skipOnPublishSettings, docsSettings)
 
@@ -164,67 +164,68 @@ lazy val mimaSettings = {
 
 lazy val generateNetlifyToml = taskKey[Unit]("Generate netlify.toml")
 
-lazy val docsSettings = {
-  ParadoxMaterialThemePlugin.paradoxMaterialThemeSettings(Paradox) ++
-    Seq(
-      mdocIn := (baseDirectory.value) / "src" / "main" / "mdoc", //
-      mdocVariables := Map(
-        "VERSION" -> version.value,
-        "BINARY_VERSION" -> binaryVersion(version.value),
-        "HTTP4S_VERSION" -> http4sV,
-        "HTTP4S_VERSION_SHORT" -> http4sV.split("\\.").take(2).mkString("."),
-        "SCALA_VERSION" -> CrossVersion.binaryScalaVersion(scalaVersion.value),
-        "SCALA_VERSIONS" -> formatCrossScalaVersions((core / crossScalaVersions).value.toList)
-      ),
-      scalacOptions in mdoc --= Seq(
-        "-Xfatal-warnings",
-        "-Ywarn-unused-import",
-        "-Ywarn-numeric-widen",
-        "-Ywarn-dead-code",
-        "-Ywarn-unused:imports",
-        "-Xlint:-missing-interpolator,_"
-      ),
-      generateNetlifyToml := {
-        val toml = latestStableVersion(baseDirectory.value)
-          .map(v => s"""
+lazy val docsSettings = Seq(
+  paradoxTheme := Some(builtinParadoxTheme("generic")),
+  mdocIn := baseDirectory.value / "src" / "main" / "mdoc",
+  mdocVariables := Map(
+    "VERSION" -> version.value,
+    "BINARY_VERSION" -> binaryVersion(version.value),
+    "HTTP4S_VERSION" -> http4sV,
+    "HTTP4S_VERSION_SHORT" -> http4sV.split("\\.").take(2).mkString("."),
+    "SCALA_VERSION" -> CrossVersion.binaryScalaVersion(scalaVersion.value),
+    "SCALA_VERSIONS" -> formatCrossScalaVersions((core / crossScalaVersions).value.toList)
+  ),
+  scalacOptions in mdoc --= Seq(
+    "-Xfatal-warnings",
+    "-Ywarn-unused-import",
+    "-Ywarn-numeric-widen",
+    "-Ywarn-dead-code",
+    "-Ywarn-unused:imports",
+    "-Xlint:-missing-interpolator,_"
+  ),
+  generateNetlifyToml := {
+    val toml = s"""
+           |[[redirects]]
+           |  from = "/"
+           |  to = "/stable"
+           |  force = false
+           |  status = 302
+           |""".stripMargin
+    latestStableVersion(baseDirectory.value)
+      .map(v => s"""
            |[[redirects]]
            |  from = "/stable/*"
            |  to = "/$v/:splat"
            |  force = false
            |  status = 200
            |""".stripMargin)
-          .getOrElse("") + s"""
+      .getOrElse("") + s"""
            |[[redirects]]
            |  from = "/*"
            |  to = "/latest/:splat"
            |  force = false
            |  status = 302
            |""".stripMargin
-        IO.write(target.value / "netlify.toml", toml)
-      },
-      sourceDirectory in Paradox := mdocOut.value,
-      makeSite := makeSite.dependsOn(mdoc.toTask("")).dependsOn(generateNetlifyToml).value,
-      Paradox / paradoxMaterialTheme ~= {
-        _.withRepository(uri("https://github.com/http4s/http4s-jdk-http-client"))
-          .withLogoUri(uri("https://http4s.org/images/http4s-logo.svg"))
-      },
-      git.remoteRepo := "git@github.com:http4s/http4s-jdk-http-client.git",
-      siteSubdirName in Paradox := {
-        if (isSnapshot.value) "latest"
-        else version.value
-      },
-      mappings in makeSite ++= Seq(
-        target.value / "netlify.toml" -> "netlify.toml"
-      ),
-      includeFilter in ghpagesCleanSite :=
-        new FileFilter {
-          def accept(f: File) =
-            f.toPath.startsWith(
-              (ghpagesRepository.value / (siteSubdirName in Paradox).value).toPath
-            )
-        } || "netlify.toml"
-    )
-}
+    IO.write(target.value / "netlify.toml", toml)
+  },
+  sourceDirectory in (Compile, paradox) := mdocOut.value,
+  makeSite := makeSite.dependsOn(mdoc.toTask("")).dependsOn(generateNetlifyToml).value,
+  git.remoteRepo := "git@github.com:http4s/http4s-jdk-http-client.git",
+  siteSubdirName in Paradox := {
+    if (isSnapshot.value) "latest"
+    else version.value
+  },
+  mappings in makeSite ++= Seq(
+    target.value / "netlify.toml" -> "netlify.toml"
+  ),
+  includeFilter in ghpagesCleanSite :=
+    new FileFilter {
+      def accept(f: File) =
+        f.toPath.startsWith(
+          (ghpagesRepository.value / (siteSubdirName in Paradox).value).toPath
+        )
+    } || "netlify.toml"
+)
 
 lazy val skipOnPublishSettings = Seq(skip in publish := true)
 

@@ -22,8 +22,8 @@ package object jdkhttpclient {
   private[jdkhttpclient] def fromCompletableFutureShift[F[_], A](
       fcs: F[CompletableFuture[A]]
   )(implicit F: Concurrent[F], CS: ContextShift[F]): F[A] =
-    F.bracketCase(fcs) { cs =>
-      F.async[A] { cb =>
+    fcs.flatMap { cs =>
+      F.cancelable[A] { cb =>
         cs.handle[Unit] { (result, err) =>
           err match {
             case null => cb(Right(result))
@@ -31,15 +31,8 @@ package object jdkhttpclient {
             case ex: CompletionException if ex.getCause ne null => cb(Left(ex.getCause))
             case ex => cb(Left(ex))
           }
-        }; ();
-      }
-    }((cs, ec) =>
-      (ec match {
-        case ExitCase.Completed => F.unit
-        case ExitCase.Error(e) =>
-          F.delay(cs.completeExceptionally(e))
-        case ExitCase.Canceled =>
-          F.delay(cs.cancel(true))
-      }).void.guarantee(CS.shift)
-    )
+        }
+        F.delay(cs.cancel(false)).void.guarantee(CS.shift)
+      }.guarantee(CS.shift)
+    }
 }

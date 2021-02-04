@@ -50,6 +50,7 @@ class JdkWSClientSpec extends CatsEffectSuite {
       .productL(
         Resource.make(IO(println("echo server start")))(_ => IO(println("echo server stutdown")))
       )
+      .productL(Resource.eval(IO.sleep(1.second)))
       .map(s => httpToWsUri(s.baseUri))
   }
 

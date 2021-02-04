@@ -47,6 +47,9 @@ class JdkWSClientSpec extends CatsEffectSuite {
       .bindAny()
       .withHttpApp(routes)
       .resource
+      .productL(
+        Resource.make(IO(println("echo server start")))(_ => IO(println("echo server stutdown")))
+      )
       .map(s => httpToWsUri(s.baseUri))
   }
 

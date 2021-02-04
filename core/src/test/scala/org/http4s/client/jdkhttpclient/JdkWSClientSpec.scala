@@ -50,15 +50,11 @@ class JdkWSClientSpec extends CatsEffectSuite {
       .productL(
         Resource.make(IO(println("echo server start")))(_ => IO(println("echo server stutdown")))
       )
-      .productL(Resource.eval(IO.sleep(1.second)))
       .map(s => httpToWsUri(s.baseUri))
   }
 
-  val webSocketFixture = ResourceFixture(webSocket)
-  val webSocketEchoFixture = ResourceFixture((webSocket, echoServer).tupled)
-
-  webSocketEchoFixture.test("send and receive frames in low-level mode") {
-    case (webSocket, echoUri) =>
+  test("send and receive frames in low-level mode") {
+    (webSocket, echoServer).tupled.use { case (webSocket, echoUri) =>
       webSocket
         .connect(WSRequest(echoUri))
         .use { conn =>
@@ -77,10 +73,11 @@ class JdkWSClientSpec extends CatsEffectSuite {
             WSFrame.Close(1000, "goodbye")
           )
         )
+    }
   }
 
-  webSocketEchoFixture.test("send and receive frames in high-level mode") {
-    case (webSocket, echoUri) =>
+  test("send and receive frames in high-level mode") {
+    (webSocket, echoServer).tupled.use { case (webSocket, echoUri) =>
       webSocket
         .connectHighLevel(WSRequest(echoUri))
         .use { conn =>
@@ -98,10 +95,11 @@ class JdkWSClientSpec extends CatsEffectSuite {
             WSFrame.Text("bar")
           )
         )
+    }
   }
 
-  webSocketEchoFixture.test("group frames by their `last` attribute in high-level mode") {
-    case (webSocket, echoUri) =>
+  test("group frames by their `last` attribute in high-level mode") {
+    (webSocket, echoServer).tupled.use { case (webSocket, echoUri) =>
       webSocket
         .connectHighLevel(WSRequest(echoUri))
         .use { conn =>
@@ -137,73 +135,80 @@ class JdkWSClientSpec extends CatsEffectSuite {
             WSFrame.Text("6")
           )
         )
+    }
   }
 
-  webSocketFixture.test("automatically close the connection") { webSocket =>
-    val frames = for {
-      ref <- Ref[IO].of(List.empty[WebSocketFrame])
-      finished <- Deferred[IO, Unit]
-      // we use Java-Websocket because Blaze has a bug concerning the handling of Close frames and shutting down
-      server = new WebSocketServer(new InetSocketAddress("localhost", 8080)) {
-        override def onOpen(conn: WebSocket, handshake: ClientHandshake) = ()
-        override def onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) =
-          ref
-            .update(_ :+ WebSocketFrame.Close(code, reason).fold(throw _, identity))
-            .unsafeRunSync()
-        override def onMessage(conn: WebSocket, message: String) =
-          ref.update(_ :+ WebSocketFrame.Text(message)).unsafeRunSync()
-        override def onMessage(conn: WebSocket, message: ByteBuffer) =
-          ref.update(_ :+ WebSocketFrame.Binary(ByteVector(message))).unsafeRunSync()
-        override def onError(conn: WebSocket, ex: Exception) = println(s"WS error $ex")
-        override def onStart() = {
-          val req = WSRequest(uri"ws://localhost:8080")
-          val p = for {
-            _ <- webSocket.connect(req).use(conn => conn.send(WSFrame.Text("hi blaze")))
-            _ <- IO.sleep(1.seconds)
-            _ <- webSocket.connectHighLevel(req).use { conn =>
-              conn.send(WSFrame.Text("hey blaze"))
-            }
-            _ <- IO.sleep(1.seconds)
-            _ <- finished.complete(())
-          } yield ()
-          p.unsafeRunAsync(_ => ())
+  test("automatically close the connection") {
+    webSocket.use { webSocket =>
+      val frames = for {
+        ref <- Ref[IO].of(List.empty[WebSocketFrame])
+        finished <- Deferred[IO, Unit]
+        // we use Java-Websocket because Blaze has a bug concerning the handling of Close frames and shutting down
+        server = new WebSocketServer(new InetSocketAddress("localhost", 8080)) {
+          override def onOpen(conn: WebSocket, handshake: ClientHandshake) = ()
+          override def onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) =
+            ref
+              .update(_ :+ WebSocketFrame.Close(code, reason).fold(throw _, identity))
+              .unsafeRunSync()
+          override def onMessage(conn: WebSocket, message: String) =
+            ref.update(_ :+ WebSocketFrame.Text(message)).unsafeRunSync()
+          override def onMessage(conn: WebSocket, message: ByteBuffer) =
+            ref.update(_ :+ WebSocketFrame.Binary(ByteVector(message))).unsafeRunSync()
+          override def onError(conn: WebSocket, ex: Exception) = println(s"WS error $ex")
+          override def onStart() = {
+            val req = WSRequest(uri"ws://localhost:8080")
+            val p = for {
+              _ <- webSocket.connect(req).use(conn => conn.send(WSFrame.Text("hi blaze")))
+              _ <- IO.sleep(1.seconds)
+              _ <- webSocket.connectHighLevel(req).use { conn =>
+                conn.send(WSFrame.Text("hey blaze"))
+              }
+              _ <- IO.sleep(1.seconds)
+              _ <- finished.complete(())
+            } yield ()
+            p.unsafeRunAsync(_ => ())
+          }
         }
-      }
-      frames <- IO(server.start())
-        .bracket(_ => finished.get *> ref.get)(_ => IO(server.stop(0)))
-    } yield frames
-    frames.assertEquals(
-      List(
-        WebSocketFrame.Text("hi blaze"),
-        WebSocketFrame.Close(1000, "").fold(throw _, identity),
-        WebSocketFrame.Text("hey blaze"),
-        WebSocketFrame.Close(1000, "").fold(throw _, identity)
+        frames <- IO(server.start())
+          .bracket(_ => finished.get *> ref.get)(_ => IO(server.stop(0)))
+      } yield frames
+      frames.assertEquals(
+        List(
+          WebSocketFrame.Text("hi blaze"),
+          WebSocketFrame.Close(1000, "").fold(throw _, identity),
+          WebSocketFrame.Text("hey blaze"),
+          WebSocketFrame.Close(1000, "").fold(throw _, identity)
+        )
       )
-    )
+    }
   }
 
-  webSocketFixture.test("send headers") { webSocket =>
-    val sentHeaders = Headers.of(
-      Header("foo", "bar"),
-      Header("Sec-Websocket-Protocol", "proto"),
-      Header("aaaa", "bbbbb")
-    )
-    Ref[IO]
-      .of(None: Option[Headers])
-      .flatMap { ref =>
-        val routes = HttpRoutes.of[IO] { case r @ GET -> Root =>
-          ref.set(r.headers.some) *> WebSocketBuilder[IO].build(Stream.empty, _ => Stream.empty)
+  test("send headers") {
+    webSocket.use { webSocket =>
+      val sentHeaders = Headers.of(
+        Header("foo", "bar"),
+        Header("Sec-Websocket-Protocol", "proto"),
+        Header("aaaa", "bbbbb")
+      )
+      Ref[IO]
+        .of(None: Option[Headers])
+        .flatMap { ref =>
+          val routes = HttpRoutes.of[IO] { case r @ GET -> Root =>
+            ref.set(r.headers.some) *> WebSocketBuilder[IO].build(Stream.empty, _ => Stream.empty)
+          }
+          BlazeServerBuilder[IO](ioRuntime.compute)
+            .bindAny()
+            .withHttpApp(routes.orNotFound)
+            .resource
+            .use { server =>
+              webSocket
+                .connect(WSRequest(httpToWsUri(server.baseUri), sentHeaders))
+                .use(_ => IO.unit)
+            } *> ref.get
         }
-        BlazeServerBuilder[IO](ioRuntime.compute)
-          .bindAny()
-          .withHttpApp(routes.orNotFound)
-          .resource
-          .use { server =>
-            webSocket.connect(WSRequest(httpToWsUri(server.baseUri), sentHeaders)).use(_ => IO.unit)
-          } *> ref.get
-      }
-      .map(_.map(recvHeaders => sentHeaders.toList.toSet.subsetOf(recvHeaders.toList.toSet)))
-      .assertEquals(Some(true))
+        .map(_.map(recvHeaders => sentHeaders.toList.toSet.subsetOf(recvHeaders.toList.toSet)))
+        .assertEquals(Some(true))
+    }
   }
 
   def httpToWsUri(uri: Uri): Uri = uri.copy(scheme = Uri.Scheme.unsafeFromString("ws").some)

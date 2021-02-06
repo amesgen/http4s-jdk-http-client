@@ -136,39 +136,39 @@ class JdkWSClientSpec extends CatsEffectSuite {
   }
 
   webSocketFixture.test("automatically close the connection") { webSocket =>
-    val frames = for {
-      ref <- Ref[IO].of(List.empty[WebSocketFrame])
-      finished <- Deferred[IO, Unit]
-      // we use Java-Websocket because Blaze has a bug concerning the handling of Close frames and shutting down
-      server = new WebSocketServer(new InetSocketAddress("localhost", 8080)) {
-        override def onOpen(conn: WebSocket, handshake: ClientHandshake) = ()
-        override def onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) =
-          ref
-            .update(_ :+ WebSocketFrame.Close(code, reason).fold(throw _, identity))
-            .unsafeRunSync()
-        override def onMessage(conn: WebSocket, message: String) =
-          ref.update(_ :+ WebSocketFrame.Text(message)).unsafeRunSync()
-        override def onMessage(conn: WebSocket, message: ByteBuffer) =
-          ref.update(_ :+ WebSocketFrame.Binary(ByteVector(message))).unsafeRunSync()
-        override def onError(conn: WebSocket, ex: Exception) = println(s"WS error $ex")
-        override def onStart() = {
-          val req = WSRequest(uri"ws://localhost:8080")
-          val p = for {
-            _ <- webSocket.connect(req).use(conn => conn.send(WSFrame.Text("hi blaze")))
-            _ <- IO.sleep(1.seconds)
-            _ <- webSocket.connectHighLevel(req).use { conn =>
-              conn.send(WSFrame.Text("hey blaze"))
-            }
-            _ <- IO.sleep(1.seconds)
-            _ <- finished.complete(())
-          } yield ()
-          p.unsafeRunAsync(_ => ())
+    // we use Java-Websocket because Blaze has a bug concerning the handling of Close frames and shutting down
+    Resource {
+      for {
+        ref <- Ref[IO].of(List.empty[WebSocketFrame])
+        started <- Deferred[IO, Unit]
+        server <- IO(new WebSocketServer(new InetSocketAddress(0)) {
+          override def onOpen(conn: WebSocket, handshake: ClientHandshake) = ()
+          override def onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) =
+            ref
+              .update(_ :+ WebSocketFrame.Close(code, reason).fold(throw _, identity))
+              .unsafeRunSync()
+          override def onMessage(conn: WebSocket, message: String) =
+            ref.update(_ :+ WebSocketFrame.Text(message)).unsafeRunSync()
+          override def onMessage(conn: WebSocket, message: ByteBuffer) =
+            ref.update(_ :+ WebSocketFrame.Binary(ByteVector(message))).unsafeRunSync()
+          override def onError(conn: WebSocket, ex: Exception) = println(s"WS error $ex")
+          override def onStart() = started.complete(()).void.unsafeRunSync()
+        })
+        _ <- IO(server.start()) *> started.get
+        uri = uriWithPort(uri"ws://localhost", server.getPort)
+      } yield ((uri, ref), IO(server.stop(0)))
+    }.use { case (uri, ref) =>
+      val req = WSRequest(uri)
+      for {
+        _ <- webSocket.connect(req).use(conn => conn.send(WSFrame.Text("hi blaze")))
+        _ <- IO.sleep(1.seconds)
+        _ <- webSocket.connectHighLevel(req).use { conn =>
+          conn.send(WSFrame.Text("hey blaze"))
         }
-      }
-      frames <- IO(server.start())
-        .bracket(_ => finished.get *> ref.get)(_ => IO(server.stop(0)))
-    } yield frames
-    frames.assertEquals(
+        _ <- IO.sleep(1.seconds)
+        frames <- ref.get
+      } yield frames
+    }.assertEquals(
       List(
         WebSocketFrame.Text("hi blaze"),
         WebSocketFrame.Close(1000, "").fold(throw _, identity),
@@ -202,6 +202,8 @@ class JdkWSClientSpec extends CatsEffectSuite {
       .assertEquals(Some(true))
   }
 
+  def uriWithPort(uri: Uri, port: Int): Uri =
+    uri.copy(authority = uri.authority.map(_.copy(port = port.some)))
   def httpToWsUri(uri: Uri): Uri = uri.copy(scheme = Uri.Scheme.unsafeFromString("ws").some)
 
 }
